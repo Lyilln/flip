@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="翻頁機">
+<title>3D 發條翻頁機</title>
+<style>
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{margin:0;background:#1c1c1e;color:#eee;font:15px -apple-system,"PingFang TC",sans-serif}
+#stage{position:sticky;top:0;z-index:5;background:#1c1c1e;display:flex;justify-content:center;padding:8px 0 4px}
+canvas{max-height:58vh;max-width:96vw;border-radius:10px;touch-action:none;background:#000}
+#bar{display:flex;gap:6px;padding:6px 10px;flex-wrap:wrap;justify-content:center}
+button,select,input[type=text]{font:inherit;border:0;border-radius:10px;padding:8px 12px;background:#3a3a3c;color:#fff}
+button.on{background:#0a84ff}
+button.rec{background:#ff453a}
+.tabs{display:flex;gap:4px;padding:6px 10px}
+.tabs button{flex:1}
+.pane{display:none;padding:6px 14px 40px}
+.pane.on{display:block}
+label{display:flex;align-items:center;gap:8px;margin:9px 0}
+label>span{min-width:88px;color:#aaa;font-size:14px}
+input[type=range]{flex:1}
+input[type=color]{width:44px;height:32px;border:0;background:none;padding:0}
+#cards{display:flex;gap:6px;overflow-x:auto;padding:4px 0 8px}
+#cards canvas{width:54px;height:72px;border-radius:6px;flex:none;border:2px solid transparent;max-height:none}
+#cards canvas.sel{border-color:#0a84ff}
+.row{display:flex;gap:6px;flex-wrap:wrap;margin:6px 0}
+#hint{text-align:center;color:#999;font-size:13px;padding:2px 10px}
+#out video{width:100%;border-radius:10px;margin-top:8px}
+</style>
+</head>
+<body>
+<div id="stage"><canvas id="cv"></canvas></div>
+<div id="hint">在右邊旋鈕上「順時針畫圈」上發條，放手就開始翻</div>
+<div id="bar">
+  <button id="bWind">自動上發條＋放開</button>
+  <button id="bReset">回到第一張</button>
+  <button id="bRec" class="rec">● 錄影</button>
+</div>
+<div class="tabs">
+  <button data-p="pCards" class="on">卡片</button>
+  <button data-p="pLook">外觀</button>
+  <button data-p="pMove">動作</button>
+  <button data-p="pOut">輸出</button>
+</div>
+
+<div class="pane on" id="pCards">
+  <div class="row">
+    <button onclick="fMulti.click()">＋ 批次加圖片</button>
+    <button id="bAddText">＋ 文字卡</button>
+  </div>
+  <input type="file" id="fMulti" accept="image/*" multiple hidden>
+  <input type="file" id="fOne" accept="image/*" hidden>
+  <div id="cards"></div>
+  <div id="ed">
+    <div class="row">
+      <button id="bLeft">◀ 前移</button><button id="bRight">後移 ▶</button>
+      <button id="bDup">複製</button><button id="bDel">刪除</button>
+    </div>
+    <label><span>版型</span><select id="eLayout">
+      <option value="full">整張圖</option><option value="imgtext">上圖下字</option>
+      <option value="textimg">上字下圖</option><option value="text">純文字</option></select></label>
+    <label><span>圖片</span><button onclick="fOne.click()">換圖</button><button id="bNoImg">移除圖</button></label>
+    <label><span>文字</span><input type="text" id="eText" style="flex:1"></label>
+    <label><span>字體</span><select id="eFont">
+      <option value='"Didot","Bodoni 72",serif'>Didot 襯線</option>
+      <option value='"Times New Roman",serif'>Times</option>
+      <option value='"Avenir Next","Helvetica Neue",sans-serif'>Avenir 無襯線</option>
+      <option value='"Futura",sans-serif'>Futura</option>
+      <option value='"Snell Roundhand","Brush Script MT",cursive'>手寫體</option>
+      <option value='"PingFang TC",sans-serif'>蘋方（中文）</option>
+      <option value='"Songti TC","STSong",serif'>宋體（中文）</option>
+      <option value='"Kaiti TC","STKaiti",serif'>楷體（中文）</option></select></label>
+    <label><span>文字上下</span><input type="range" id="eTy" min="-100" max="100"></label>
+    <label><span>字級</span><input type="range" id="eSize" min="30" max="260"></label>
+    <label><span>粗體</span><input type="checkbox" id="eBold"></label>
+    <label><span>字色／底色</span><input type="color" id="eTc"><input type="color" id="eBg"></label>
+    <label><span>圖片縮放</span><input type="range" id="eZoom" min="100" max="250"></label>
+    <label><span>圖片上下</span><input type="range" id="eOy" min="-100" max="100"></label>
+    <label><span>圖片左右</span><input type="range" id="eOx" min="-100" max="100"></label>
+    <div class="row"><button id="bApplyAll">把字體／字級／顏色套用到全部</button></div>
+  </div>
+</div>
+
+<div class="pane" id="pLook">
+  <label><span>外殼顏色</span><input type="color" id="lHouse" value="#8dc4e8"></label>
+  <label><span>旋鈕顏色</span><input type="color" id="lKnob" value="#4a8fd0"></label>
+  <label><span>外殼大小</span><input type="range" id="lScale" min="60" max="130" value="100"></label>
+  <label><span>外殼厚度</span><input type="range" id="lDepth" min="0" max="60" value="26"></label>
+  <label><span>邊框寬度</span><input type="range" id="lPad" min="16" max="120" value="48"></label>
+  <label><span>摺線位置</span><input type="range" id="lSplit" min="30" max="70" value="50"></label>
+  <label><span>背景</span><select id="lBgType"><option value="grad">漸層</option><option value="solid">純色</option><option value="img">照片</option></select></label>
+  <label><span>背景顏色</span><input type="color" id="lBg1" value="#c4d6aa"><input type="color" id="lBg2" value="#96b280"></label>
+  <label><span>背景照片</span><button onclick="fBg.click()">選照片</button></label>
+  <input type="file" id="fBg" accept="image/*" hidden>
+  <label><span>背景模糊</span><input type="range" id="lBlur" min="0" max="30" value="0"></label>
+</div>
+
+<div class="pane" id="pMove">
+  <label><span>最快翻速</span><input type="range" id="mRate" min="2" max="25" value="10"><b id="vRate"></b></label>
+  <label><span>每圈翻幾張</span><input type="range" id="mPer" min="1" max="8" value="3"><b id="vPer"></b></label>
+  <label><span>減速感</span><input type="range" id="mDecay" min="0" max="200" value="80"></label>
+  <label><span>最多圈數</span><input type="range" id="mMax" min="2" max="30" value="12"><b id="vMax"></b></label>
+  <label><span>自動上發條圈數</span><input type="range" id="mAuto" min="1" max="30" value="5"><b id="vAuto"></b></label>
+  <label><span>落下彈跳</span><input type="range" id="mBounce" min="0" max="100" value="50"></label>
+  <label><span>殘影</span><input type="range" id="mBlur" min="0" max="100" value="40"></label>
+  <label><span>外殼震動</span><input type="range" id="mShake" min="0" max="100" value="40"></label>
+  <label><span>手持晃動</span><input type="range" id="mSway" min="0" max="100" value="30"></label>
+  <label><span>循環翻</span><input type="checkbox" id="mLoop" checked></label>
+</div>
+
+<div class="pane" id="pOut">
+  <label><span>比例</span><select id="oRatio"><option value="45">4:5（IG 貼文）</option><option value="916">9:16（Reels／限動）</option></select></label>
+  <label><span>錄影長度</span><select id="oStop"><option value="auto">翻完自動停</option><option value="manual">手動停</option></select></label>
+  <div id="hint2" style="color:#999;font-size:13px">按「● 錄影」後再上發條，翻完會自動停止。影片是無聲的，之後在 CapCut 加音樂。</div>
+  <div id="out"></div>
+</div>
+
+<script>
+const $=id=>document.getElementById(id);
+const cv=$('cv'),ctx=cv.getContext('2d');
+let W=1080,H=1350;
+const CW=600,CH=800; // 卡片內部解析度
+let cards=[],sel=0,bgImg=null;
+const P=k=>+$(k).value;
+
+/* ---------- 卡片 ---------- */
+function newCard(o){return Object.assign({layout:'imgtext',img:null,text:'',font:$('eFont').options[0].value,size:150,bold:false,tc:'#111111',bg:'#ffffff',ty:0,zoom:100,ox:0,oy:0,cv:document.createElement('canvas')},o)}
+function render(c){
+  const k=c.cv;k.width=CW;k.height=CH;const g=k.getContext('2d');
+  g.fillStyle=c.bg;g.fillRect(0,0,CW,CH);
+  const split=P('lSplit')/100;
+  let ir=null,tr=null;
+  if(c.layout==='full')ir=[0,0,CW,CH];
+  else if(c.layout==='imgtext'){ir=[0,0,CW,CH*split];tr=[0,CH*split,CW,CH*(1-split)]}
+  else if(c.layout==='textimg'){tr=[0,0,CW,CH*split];ir=[0,CH*split,CW,CH*(1-split)]}
+  else tr=[0,0,CW,CH];
+  if(ir&&c.img){
+    const [x,y,w,h]=ir,im=c.img,s=Math.max(w/im.width,h/im.height)*c.zoom/100;
+    const dw=im.width*s,dh=im.height*s;
+    g.save();g.beginPath();g.rect(x,y,w,h);g.clip();
+    g.drawImage(im,x+(w-dw)/2+(c.ox/100)*(dw-w)/2,y+(h-dh)/2+(c.oy/100)*(dh-h)/2,dw,dh);g.restore();
+  }else if(ir){g.fillStyle='rgba(0,0,0,.08)';g.fillRect(...ir)}
+  if(tr&&c.text){
+    g.fillStyle=c.tc;g.textAlign='center';g.textBaseline='middle';
+    let sz=c.size;g.font=(c.bold?'bold ':'')+sz+'px '+c.font;
+    while(g.measureText(c.text).width>CW*0.9&&sz>10){sz-=4;g.font=(c.bold?'bold ':'')+sz+'px '+c.font}
+    g.fillText(c.text,tr[0]+tr[2]/2,tr[1]+tr[3]/2+(c.ty/100)*(tr[3]/2-sz*0.45));
+  }
+}
+function thumbs(){
+  const box=$('cards');box.innerHTML='';
+  cards.forEach((c,i)=>{const t=document.createElement('canvas');t.width=108;t.height=144;
+    t.getContext('2d').drawImage(c.cv,0,0,108,144);if(i===sel)t.className='sel';
+    t.onclick=()=>{sel=i;cur=i;flip=null;thumbs();loadEd()};box.appendChild(t)});
+}
+function loadEd(){const c=cards[sel];if(!c)return;
+  $('eLayout').value=c.layout;$('eText').value=c.text;$('eFont').value=c.font;$('eSize').value=c.size;
+  $('eBold').checked=c.bold;$('eTc').value=c.tc;$('eBg').value=c.bg;$('eTy').value=c.ty;$('eZoom').value=c.zoom;$('eOx').value=c.ox;$('eOy').value=c.oy}
+function saveEd(){const c=cards[sel];if(!c)return;
+  Object.assign(c,{layout:$('eLayout').value,text:$('eText').value,font:$('eFont').value,size:P('eSize'),bold:$('eBold').checked,tc:$('eTc').value,bg:$('eBg').value,ty:P('eTy'),zoom:P('eZoom'),ox:P('eOx'),oy:P('eOy')});
+  render(c);thumbs()}
+['eLayout','eText','eFont','eSize','eBold','eTc','eBg','eTy','eZoom','eOx','eOy'].forEach(k=>$(k).addEventListener('input',saveEd));
+function loadImg(file){return new Promise(r=>{const u=URL.createObjectURL(file),im=new Image();im.onload=()=>r(im);im.src=u})}
+$('fMulti').onchange=async e=>{for(const f of e.target.files){const c=newCard({layout:'full',img:await loadImg(f)});render(c);cards.push(c)}
+  sel=cards.length-1;thumbs();loadEd();e.target.value=''};
+$('fOne').onchange=async e=>{const f=e.target.files[0];if(!f)return;const c=cards[sel];c.img=await loadImg(f);if(c.layout==='text')c.layout='imgtext';render(c);thumbs();loadEd();e.target.value=''};
+$('bNoImg').onclick=()=>{cards[sel].img=null;render(cards[sel]);thumbs()};
+$('bAddText').onclick=()=>{const c=newCard({text:'TEXT'});render(c);cards.splice(sel+1,0,c);sel++;thumbs();loadEd()};
+$('bDup').onclick=()=>{const o=cards[sel],c=newCard(Object.assign({},o,{cv:document.createElement('canvas')}));render(c);cards.splice(sel+1,0,c);sel++;thumbs()};
+$('bDel').onclick=()=>{if(cards.length<2)return;cards.splice(sel,1);sel=Math.min(sel,cards.length-1);cur=Math.min(cur,cards.length-1);flip=null;thumbs();loadEd()};
+function mv(d){const j=sel+d;if(j<0||j>=cards.length)return;[cards[sel],cards[j]]=[cards[j],cards[sel]];sel=j;thumbs()}
+$('bLeft').onclick=()=>mv(-1);$('bRight').onclick=()=>mv(1);
+$('bApplyAll').onclick=()=>{const s=cards[sel];cards.forEach(c=>{c.font=s.font;c.size=s.size;c.bold=s.bold;c.tc=s.tc;c.bg=s.bg;c.ty=s.ty;render(c)});thumbs()};
+$('lSplit').oninput=()=>{cards.forEach(render);thumbs()};
+$('fBg').onchange=async e=>{const f=e.target.files[0];if(f){bgImg=await loadImg(f);$('lBgType').value='img'}};
+
+/* ---------- 物理 ---------- */
+let cur=0,flip=null,land=null,turns=0,startTurns=0,remain=0,running=false,timer=0;
+let knobA=0,tilt=0,shake=0,winding=false,lastAng=0,autoWind=null,T=0;
+function geo(){
+  const s=P('lScale')/100,cw=W*0.48*s,ch=cw*4/3,pad=P('lPad')*s,dep=P('lDepth')*s;
+  const hw=cw+pad*2,hh=ch+pad*2,hx=(W-hw)/2-W*0.03,hy=(H-hh-dep)/2;
+  const kr=Math.max(38,pad*0.9)*s+10;
+  return {cw,ch,pad,dep,hw,hh,hx,hy,cx:hx+pad,cy:hy+pad,kx:hx+hw+kr*0.35,ky:hy+hh*0.32,kr}
+}
+function release(){if(turns<0.15){turns=0;return}
+  startTurns=turns;remain=turns*P('mPer');running=true;timer=0}
+function rate(){const f=Math.max(0,Math.min(1,turns/Math.max(startTurns,0.001)));
+  return Math.max(1.2,P('mRate')*Math.pow(f,P('mDecay')/100))}
+function startFlip(){
+  if(cards.length<2){remain=0;return}
+  if(!$('mLoop').checked&&cur>=cards.length-1){remain=0;return}
+  const r=rate();flip={from:cur,to:(cur+1)%cards.length,t:0,dur:Math.min(0.24,Math.max(0.045,0.8/r))};
+  shake=Math.min(1.5,shake+0.6);
+}
+function update(dt){
+  T+=dt;
+  if(autoWind){const sp=Math.max(2.5,autoWind.n/1.2);const d=Math.min(dt*sp,autoWind.n-autoWind.done);
+    autoWind.done+=d;turns=Math.min(P('mMax'),turns+d);knobA+=d*2*Math.PI;tilt=Math.sin(T*9)*0.02;
+    if(autoWind.done>=autoWind.n-1e-6){autoWind=null;tilt=0;release()}}
+  if(running){
+    timer-=dt;
+    if(timer<=0&&!flip&&remain>0){startFlip();timer=1/rate()}
+    const r=rate(),used=dt*r/P('mPer');
+    if(remain>0){turns=Math.max(0,turns-used);knobA-=used*2*Math.PI}
+    if(flip===null&&timer<=0&&remain>0){} // wait
+    if(remain<=0&&!flip){running=false;turns=0;onRunEnd()}
+  }
+  if(flip){flip.t+=dt;if(flip.t>=flip.dur){land={t:0,prev:flip.from};cur=flip.to;flip=null;if(running)remain-=1;if(remain<=0)remain=0}}
+  if(land){land.t+=dt;if(land.t>0.6)land=null}
+  shake*=Math.pow(0.02,dt);
+}
+/* ---------- 繪圖 ---------- */
+const F=2200;
+function drawFlap(src,top,th,cx,hy,cw,ch,splitPx,shadeA){
+  // top: 上半片(往上延伸)；th: 與平面夾角 0..PI/2
+  const n=36,sh=top?splitPx:CH-splitPx,len=top?splitPx/CH*ch:(CH-splitPx)/CH*ch;
+  for(let i=0;i<n;i++){
+    const r0=i/n*len,r1=(i+1)/n*len,s0=F/(F-r0*Math.sin(th)),s1=F/(F-r1*Math.sin(th));
+    const y0=r0*Math.cos(th)*s0,y1=r1*Math.cos(th)*s1;
+    const srcR0=i/n*sh,srcR1=(i+1)/n*sh;
+    const sy=top?splitPx-srcR1:splitPx+srcR0;
+    const w=cw*(s0+s1)/2,yy=top?hy-y1:hy+y0,hh=Math.abs(y1-y0)+1;
+    ctx.drawImage(src,0,sy,CW,(srcR1-srcR0)+0.5,cx-w/2,yy,w,hh);
+    if(shadeA>0){ctx.fillStyle='rgba(0,0,0,'+shadeA+')';ctx.fillRect(cx-w/2,yy,w,hh)}
+  }
+}
+function rr(x,y,w,h,r){ctx.beginPath();ctx.roundRect?ctx.roundRect(x,y,w,h,r):ctx.rect(x,y,w,h)}
+function shade(hex,k){const n=parseInt(hex.slice(1),16);const f=v=>Math.max(0,Math.min(255,Math.round(v*k)));
+  return `rgb(${f(n>>16)},${f(n>>8&255)},${f(n&255)})`}
+function draw(){
+  // 背景
+  const bt=$('lBgType').value;
+  ctx.filter='none';
+  if(bt==='img'&&bgImg){const s=Math.max(W/bgImg.width,H/bgImg.height);const b=P('lBlur');
+    if(b)ctx.filter=`blur(${b}px)`;ctx.drawImage(bgImg,(W-bgImg.width*s)/2,(H-bgImg.height*s)/2,bgImg.width*s,bgImg.height*s);ctx.filter='none'}
+  else if(bt==='solid'){ctx.fillStyle=$('lBg1').value;ctx.fillRect(0,0,W,H)}
+  else{const g=ctx.createLinearGradient(0,0,0,H);g.addColorStop(0,$('lBg1').value);g.addColorStop(1,$('lBg2').value);ctx.fillStyle=g;ctx.fillRect(0,0,W,H)}
+  if(!cards.length)return;
+  const G=geo(),sway=P('mSway')/100,sk=P('mShake')/100*shake;
+  ctx.save();
+  const ox=W/2,oy=H/2;
+  ctx.translate(ox+Math.sin(T*1.3)*14*sway+(Math.random()-.5)*10*sk,oy+Math.sin(T*2.1+1)*10*sway+(Math.random()-.5)*10*sk);
+  ctx.rotate(Math.sin(T*1.7)*0.02*sway+tilt+(winding?Math.sin(knobA)*0.025:0));
+  ctx.translate(-ox,-oy);
+  const hc=$('lHouse').value;
+  // 陰影＋厚度
+  ctx.save();ctx.shadowColor='rgba(0,0,0,.35)';ctx.shadowBlur=50;ctx.shadowOffsetY=24;
+  ctx.fillStyle=shade(hc,0.72);rr(G.hx,G.hy+G.dep,G.hw,G.hh,44);ctx.fill();ctx.restore();
+  // 旋鈕
+  const kc=$('lKnob').value;
+  ctx.fillStyle=shade(kc,0.7);rr(G.kx-G.kr*0.55,G.ky-G.kr+G.dep*0.5,G.kr*1.1,G.kr*2,G.kr*0.5);ctx.fill();
+  ctx.fillStyle=kc;rr(G.kx-G.kr*0.55,G.ky-G.kr,G.kr*1.1,G.kr*2,G.kr*0.5);ctx.fill();
+  ctx.save();rr(G.kx-G.kr*0.55,G.ky-G.kr,G.kr*1.1,G.kr*2,G.kr*0.5);ctx.clip();ctx.strokeStyle=shade(kc,0.6);ctx.lineWidth=4;
+  for(let i=0;i<12;i++){const a=knobA+i*Math.PI/6,y=G.ky-Math.cos(a)*G.kr;if(Math.sin(a)>0){ctx.beginPath();ctx.moveTo(G.kx-G.kr*0.55,y);ctx.lineTo(G.kx+G.kr*0.55,y);ctx.stroke()}}
+  ctx.restore();
+  // 正面
+  const hg=ctx.createLinearGradient(0,G.hy,0,G.hy+G.hh);hg.addColorStop(0,shade(hc,1.08));hg.addColorStop(1,shade(hc,0.95));
+  ctx.fillStyle=hg;rr(G.hx,G.hy,G.hw,G.hh,44);ctx.fill();
+  ctx.fillStyle=shade(hc,0.55);rr(G.cx-8,G.cy-8,G.cw+16,G.ch+16,22);ctx.fill();
+  // 卡片
+  const splitPx=CH*P('lSplit')/100,hingeY=G.cy+G.ch*P('lSplit')/100,mid=G.cx+G.cw/2;
+  ctx.save();rr(G.cx,G.cy,G.cw,G.ch,16);ctx.clip();
+  const A=cards[flip?flip.from:cur].cv;
+  if(!flip){
+    ctx.drawImage(A,G.cx,G.cy,G.cw,G.ch);
+  }else{
+    const B=cards[flip.to].cv;
+    ctx.drawImage(B,0,0,CW,splitPx,G.cx,G.cy,G.cw,G.ch*splitPx/CH);
+    ctx.drawImage(A,0,splitPx,CW,CH-splitPx,G.cx,hingeY,G.cw,G.ch*(1-splitPx/CH));
+  }
+  ctx.restore();
+  if(flip){
+    const p=Math.min(1,flip.t/flip.dur),phi=Math.PI*p*p,B=cards[flip.to].cv,bl=P('mBlur')/100;
+    if(phi<Math.PI/2){
+      if(bl>0){ctx.globalAlpha=bl*0.35;drawFlap(A,true,Math.max(0,phi-0.35),mid,hingeY,G.cw,G.ch,splitPx,0);ctx.globalAlpha=1}
+      drawFlap(A,true,phi,mid,hingeY,G.cw,G.ch,splitPx,0.45*Math.sin(phi));
+    }else{
+      const th=Math.PI-phi;
+      if(bl>0){ctx.globalAlpha=bl*0.35;drawFlap(B,false,Math.min(Math.PI/2,th+0.35),mid,hingeY,G.cw,G.ch,splitPx,0);ctx.globalAlpha=1}
+      drawFlap(B,false,th,mid,hingeY,G.cw,G.ch,splitPx,0.35*Math.sin(th));
+    }
+  }else if(land&&P('mBounce')>0){
+    const t=land.t,amp=0.28*P('mBounce')/100,th=amp*Math.exp(-t*9)*Math.abs(Math.sin(t*28));
+    if(th>0.004){ // 底片微微彈起：先蓋掉原本下半，再畫彈起的片
+      ctx.drawImage(cards[land.prev%cards.length].cv,0,splitPx,CW,CH-splitPx,G.cx,hingeY,G.cw,G.ch*(1-splitPx/CH));
+      drawFlap(cards[cur].cv,false,th,mid,hingeY,G.cw,G.ch,splitPx,0.3*Math.sin(th));}
+  }
+  // 摺線與轉軸
+  ctx.fillStyle='rgba(0,0,0,.35)';ctx.fillRect(G.cx,hingeY-2,G.cw,4);
+  ctx.fillStyle=shade(hc,1.15);ctx.strokeStyle=shade(hc,0.7);ctx.lineWidth=3;
+  for(const x of [G.cx-20,G.cx+G.cw+2]){rr(x,hingeY-G.ch*0.09,18,G.ch*0.18,9);ctx.fill();ctx.stroke()}
+  ctx.restore();
+}
+/* ---------- 手勢 ---------- */
+function pt(e){const r=cv.getBoundingClientRect();return [(e.clientX-r.left)*W/r.width,(e.clientY-r.top)*H/r.height]}
+cv.addEventListener('pointerdown',e=>{const [x,y]=pt(e),G=geo();
+  if(Math.hypot(x-G.kx,y-G.ky)<Math.max(G.kr*3.2,W*0.2)){winding=true;running=false;remain=0;cv.setPointerCapture(e.pointerId);lastAng=Math.atan2(y-G.ky,x-G.kx);e.preventDefault()}});
+cv.addEventListener('pointermove',e=>{if(!winding)return;const [x,y]=pt(e),G=geo();const a=Math.atan2(y-G.ky,x-G.kx);
+  let d=a-lastAng;if(d>Math.PI)d-=2*Math.PI;if(d<-Math.PI)d+=2*Math.PI;lastAng=a;
+  if(d>0){turns=Math.min(P('mMax'),turns+d/(2*Math.PI));knobA+=d}});
+const up=()=>{if(winding){winding=false;release()}};
+cv.addEventListener('pointerup',up);cv.addEventListener('pointercancel',up);
+$('bWind').onclick=()=>{running=false;remain=0;autoWind={n:Math.min(P('mAuto'),P('mMax')),done:0}};
+$('bReset').onclick=()=>{running=false;remain=0;turns=0;flip=null;land=null;cur=0};
+
+/* ---------- 錄影 ---------- */
+let rec=null,chunks=[];
+function mime(){for(const m of['video/mp4;codecs=avc1','video/mp4','video/webm;codecs=vp9','video/webm'])if(window.MediaRecorder&&MediaRecorder.isTypeSupported(m))return m;return''}
+$('bRec').onclick=()=>{
+  if(rec){rec.stop();return}
+  if(!window.MediaRecorder){alert('這個瀏覽器不支援錄影，請更新 iOS 或用 Safari');return}
+  const m=mime();chunks=[];
+  rec=new MediaRecorder(cv.captureStream(30),m?{mimeType:m,videoBitsPerSecond:12e6}:{});
+  rec.ondataavailable=e=>e.data.size&&chunks.push(e.data);
+  rec.onstop=()=>{const type=rec.mimeType||m||'video/mp4',ext=type.includes('mp4')?'mp4':'webm';
+    const blob=new Blob(chunks,{type}),url=URL.createObjectURL(blob);rec=null;$('bRec').textContent='● 錄影';
+    const o=$('out');o.innerHTML='';const v=document.createElement('video');v.src=url;v.controls=true;v.playsInline=true;o.appendChild(v);
+    const file=new File([blob],'flip.'+ext,{type});
+    const b=document.createElement('button');b.textContent='儲存／分享影片';b.style.marginTop='8px';
+    b.onclick=async()=>{if(navigator.canShare&&navigator.canShare({files:[file]})){try{await navigator.share({files:[file]})}catch(e){}}
+      else{const a=document.createElement('a');a.href=url;a.download=file.name;a.click()}};
+    o.appendChild(b);document.querySelector('[data-p=pOut]').click()};
+  rec.start(200);$('bRec').textContent='■ 停止錄影';
+};
+function onRunEnd(){if(rec&&$('oStop').value==='auto')setTimeout(()=>{if(rec&&!running)rec.stop()},900)}
+
+/* ---------- 其他 ---------- */
+function size(){if($('oRatio').value==='916'){W=1080;H=1920}else{W=1080;H=1350}cv.width=W;cv.height=H}
+$('oRatio').onchange=size;
+document.querySelectorAll('.tabs button').forEach(b=>b.onclick=()=>{document.querySelectorAll('.tabs button,.pane').forEach(x=>x.classList.remove('on'));b.classList.add('on');$(b.dataset.p).classList.add('on')});
+function labels(){$('vRate').textContent=P('mRate')+'張/秒';$('vPer').textContent=P('mPer');$('vMax').textContent=P('mMax')+'圈';$('vAuto').textContent=P('mAuto')+'圈'}
+document.querySelectorAll('#pMove input').forEach(i=>i.addEventListener('input',labels));labels();
+size();
+const demo=[['I','#cfe6f7'],['WANT','#fde2e4'],['YOU','#e2f0cb'],['TO','#fff1c1'],['LOVE','#f1dcff'],['ME','#ffffff']];
+demo.forEach(([t,bg])=>{const c=newCard({text:t,bg});render(c);cards.push(c)});
+thumbs();loadEd();
+let last=performance.now();
+(function loop(now){const dt=Math.min(0.05,(now-last)/1000);last=now;update(dt);draw();requestAnimationFrame(loop)})(last);
+</script>
+</body>
+</html>
